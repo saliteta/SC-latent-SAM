@@ -42,3 +42,14 @@ CUDA_VISIBLE_DEVICES=x python -W ignore clustering_features.py \
     --debugging True \
     --device cuda 
 ```
+
+## Visualization 
+To visualize our result, one can run the following code in run.sh
+
+```
+python visualization.py \
+    -i /data/grocery_store/10F/input/ \ # Input image 
+    -m output/saved_labels.npz \ # Mask File
+    -o output/ # Output folder
+```
+![Visualization](assets/visualization.png)

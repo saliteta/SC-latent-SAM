@@ -6,8 +6,8 @@ from segment_anything.modeling.sam import Sam
 from segment_anything import SamPredictor, sam_model_registry
 
 
-from loader import load_dataset
-from analysis import apply_pca, cluster_kmeans, inter_group_cluster_kmeans, group_prototyping, overall_label
+from stable_processing.loader import load_dataset
+from stable_processing.analysis import apply_pca, cluster_kmeans, inter_group_cluster_kmeans, group_prototyping, overall_label
 
 import torch
 import random
@@ -142,14 +142,3 @@ def main():
 
 if __name__ == '__main__':
     main()    
-
-    #refined_label = np.load('/home/xiongbutian/workspace/Gaussian_Based_Model/3D_langSplat/preprocess/debugging/saved_labels.npz')['arr_0']
-    #
-    #for i in range(600):
-    #    label = refined_label[i]
-    #    # Create a colormap for the labels
-    #    # Plot the labeled mask
-    #    plt.figure(figsize=(6, 6))
-    #    plt.imshow(label, cmap='viridis', vmin=0, vmax=30)
-    #    plt.colorbar()  # shows the color bar
-    #    plt.savefig(f'debugging/img_{i}.jpg') 
