@@ -30,9 +30,6 @@ OVERALL_CLUSTER = 30
 ### Further optimization suggestion
 ### Only load SAM model that we need to use
 
-sam_checkpoint = '/home/xiongbutian/workspace/GroundingSAM_Fast/sam_vit_h_4b8939.pth'
-sam_version = 'vit_h'
-
 class sam_encoder(SamPredictor):
     def __init__(self, sam_model: Sam) -> None:
         super().__init__(sam_model)

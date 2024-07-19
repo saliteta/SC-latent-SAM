@@ -1,24 +1,31 @@
 # Semantic Consistanct Latent Sam 
 
 - We utilize Hierachical Clustering Method to alleviate inconsistancy problem
+- We provide a coarse to fine stratgy to refine the rough mask result we have (64*64)
 - We achieve a better result only on quntization
 
 ## Problem Definition
 - Inconsistancy
 ![inconsistancy](assets/inconsistancy.png)
 
-## Result
+## Result for Rough Result
 ![adjacent_comparison](assets/adjacent_comparison.png)
-![global_comparison](assets/global_comparison.png)
+![global_comparison](assets/global_comparison.pn
 
+## Result for Refined Result
+![Refined_result](assets/refined_semantic_result.png)
 
 ## Install
 After clone 
 ```
     conda create -n sc-latent-sam python=3.9 -y
-    conda install -c  https://mirrors.tuna.tsinghua.edu.cn/anaconda/cloud/rapidsai/ cuml # if u r in China Mainland
+    conda install -c https://mirrors.tuna.tsinghua.edu.cn/anaconda/cloud/conda-forge  cudatoolkit=11.8 # if u r in China Mainland
+    conda install -c https://mirrors.tuna.tsinghua.edu.cn/anaconda/cloud/rapidsai/ cuml # if u r in China Mainland
+    conda install -c nvidia::cudatoolkit=11.8 # if you are in a place where there is no saction and firewalls
     conda install rapidsai::cuml # if you are in a place where there is no saction and firewalls
 ```
+
+conda install -c https://mirrors.tuna.tsinghua.edu.cn/anaconda/cloud/rapidsai/ -c https://mirrors.tuna.tsinghua.edu.cn/anaconda/cloud/conda-forge cuml=24.06 python=3.9 cuda-version=11.8
 
 Follow  [SAM](https://github.com/facebookresearch/segment-anything) to install othere related package
 

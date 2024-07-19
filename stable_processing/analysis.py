@@ -12,6 +12,19 @@ import torch
     And use PCA to do the down sampling to n_components to 20
 '''
 
+def logits_to_alpha(logits: torch.Tensor, lower_bound: float = 0.2, upper_bound: float = 1.0):
+    '''
+        This will generate high fidelity result from low resolution mask
+        This generate result should be feed into CLIP to generate text embeddings
+    '''
+    # Applying the sigmoid function to normalize logits between 0 and 1
+    sigmoid_logits = torch.sigmoid(logits)
+    
+    # Scaling the sigmoid output to the desired alpha range [lower_bound, upper_bound]
+    alpha = lower_bound + (sigmoid_logits * (upper_bound - lower_bound))
+    
+    return alpha
+
 def visualize_clusters(labels, title, batch_size):
     fig = plt.figure(figsize=(8, 8))
     grid_size = int(batch_size**0.5)
@@ -131,7 +144,16 @@ def overall_label(
             new_labels[i*batch_number:] = mapped_labels.view(-1, h, w)
             
     return new_labels
-    
+
+
+def heatmap(data:torch.Tensor, img_location):
+    plt.figure(figsize=(8, 8))  # Set the size of the figure (optional)
+    data = data.cpu().numpy()
+    plt.imshow(data, cmap='hot', interpolation='nearest')  # 'hot' colormap goes from black to red to yellow to white
+    plt.colorbar()  # Show color scale
+    plt.title('Heatmap of 256x256 Array')
+    plt.savefig(img_location)
+    plt.close()
 
 
 if __name__ == '__main__':
