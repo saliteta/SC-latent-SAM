@@ -19,8 +19,8 @@ from segment_anything import SamPredictor, sam_model_registry
 
 from stable_processing.loader import load_dataset
 from stable_processing.fake_masks import compute_box_from_mask, fake_logits_mask
-from stable_processing.analysis import cluster_kmeans, apply_pca, overall_label, inter_group_cluster_kmeans
-from stable_processing.decode_mask import white_overlay, alpha_value_blending
+from stable_processing.analysis import cluster_kmeans, apply_pca, overall_label, inter_group_cluster_kmeans, group_prototyping
+from stable_processing.logging import print_with_color
 
 from stable_processing.analysis import heatmap
 
@@ -115,7 +115,9 @@ class sam_batchify(SamPredictor):
             multimask_output=True,
         )
         ## we might need to merge multiple masks
-        return low_res_result_masks, iou_prediction
+        low_res_result_masks = low_res_result_masks.squeeze()
+        merged_tensor, _ = torch.max(low_res_result_masks, dim=0)
+        return merged_tensor, iou_prediction
 
 
 def parser():
@@ -137,20 +139,23 @@ def main():
     sam_checkpoint = args.sam_checkpoint
     sam_version = args.sam_version
     
-    print(f'Sam Checkpoint is :{sam_checkpoint}')
-    print(f'Sam version is :{sam_version}')
+    print_with_color(f'Sam Checkpoint is :{sam_checkpoint}', 'YELLOW')
+    print_with_color(f'Sam version is :{sam_version}', 'YELLOW')
     
     image_directory = args.image_dir
     output_directory = args.output_dir
     
-    print(f'Image Directory is :{image_directory}')
-    print(f'Output Directory is :{output_directory}')
+    print_with_color(f'Image Directory is :{image_directory}', 'YELLOW')
+    print_with_color(f'Output Directory is :{output_directory}', 'YELLOW')
     
     device = args.device
     
-    debugging = args.debugging
+    debugging =(args.debugging == 'True')
     batch_number = args.batch_num
-
+    
+    if debugging:
+        os.makedirs(os.path.join(output_directory, 'debugging'), exist_ok=True)
+        debugging_dir = os.path.join(output_directory, 'debugging')
 
     loader, image_number = load_dataset(image_directory, batch_size=batch_number, num_workers=2) 
     model = sam_batchify(sam_model_registry[sam_version](checkpoint=sam_checkpoint).to(device))
@@ -189,6 +194,9 @@ def main():
     
     del model
     torch.cuda.empty_cache()
+
+    print_with_color(f'Image encoding with hierachical clustering is accomplished' , 'GREEN')
+
     
     batched_prototype = batched_prototype.contiguous().cuda()
     prototype_clustered_result = inter_group_cluster_kmeans(batched_prototype, n_clusters=30) # (prototype_len)
@@ -197,27 +205,25 @@ def main():
     batched_labels = batched_labels.contiguous().cuda()            # (n//b, b, h, w)
     refined_lable = overall_label(batched_labels, prototype_clustered_result)
 
-    np.savez(f'{output_directory}/saved_labels', refined_lable.cpu().numpy())
-    np.savez(f'{output_directory}/saved_features', features_saver.numpy())
+    # save labels and save features
+    np.savez_compressed(f'{output_directory}/saved_labels', refined_lable.cpu().numpy())
+    np.savez_compressed(f'{output_directory}/saved_features', features_saver.numpy())
+
+    print_with_color(f'Interal result of clustering labels and features are saved at {output_directory}/saved_labels and {output_directory}/saved_features' , 'GREEN')
 
     del batched_labels, prototype_clustered_result, batched_prototype
 
     # We need to use refined labels as a masks and send it to sam mask encoder
     model = sam_batchify(sam_model_registry[sam_version](checkpoint=sam_checkpoint).to(device))
     
-    # ############### for debugging ##################
-    # features_saver = np.load('/home/planner/xiongbutian/sc_latent_sam/output/saved_features.npz')['arr_0']
-    # refined_lable = np.load('/home/planner/xiongbutian/sc_latent_sam/output/saved_labels.npz')['arr_0']
-    # features_saver = torch.Tensor(features_saver)
-    # refined_lable = torch.Tensor(refined_lable)
-# 
-    # ############### for debugging ##################
-
     file_name = sorted(os.listdir(image_directory))
     mask_dict = {}
+
     
+    # refined our mask using the decoding stratgy
+    content = zip(features_saver, refined_lable, file_name)
     with torch.no_grad():
-        for i, (features, masks, name) in tqdm(enumerate(zip(features_saver, refined_lable, file_name))):
+        for i, (features, masks, name) in tqdm(enumerate(content), total=len(features_saver), desc="Processing items"):
             features = features.cuda()
             masks = masks.cuda()
             
@@ -226,19 +232,20 @@ def main():
             for label in masks_unique:
                 ### would be possible to process it batchify?
                 refined_masks, _ = model.point_fine_gradined_mask_generation(masks == label, features)
-                refined_masks = refined_masks.squeeze()
-                refined_mask_merge, _ = torch.max(refined_masks, dim=0)
-                refined_merged_masks.append(refined_mask_merge)
-                # we recommand to store
-                # original_image = Image.open(os.path.join(image_directory,name)).convert('RGBA')
-                # alpha_mask = alpha_value_blending(original_image.size, refined_masks_merge)
-                # overlay_image = white_overlay(alpha_mask, original_image)
-                # overlay_image.save(f'output/{name_write}_{label}.png')
-                # overlay_image.close()
+                refined_masks = refined_masks
+                refined_merged_masks.append(refined_masks)
+                if debugging:
+                    debugging_name = name.split('.')[0]
+                    heatmap(refined_masks, os.path.join(debugging_dir,f'{debugging_name}_logits+.jpg'))
+                    heatmap(masks == label, os.path.join(debugging_dir,f'{debugging_name}+.jpg'))
+
             mask_dict[name]  = torch.stack(refined_merged_masks).cpu().numpy()
             # There is no unified shape since some of the unique label might be a lot, some might not be a unique label
-            
-        np.savez_compressed(f'{output_directory}/refined_mask.npz', mask_dict)
+        print_with_color('Saving refinement result ...', 'YELLOW')
+        np.savez_compressed(f'{output_directory}/refined_mask.npz', **mask_dict)
+    print_with_color(f'Mask refinement is accomplished, refined mask is saved at {output_directory}/refined_mask.npz', 'GREEN')
+
+        
     
 
 

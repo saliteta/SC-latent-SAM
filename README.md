@@ -51,7 +51,7 @@ CUDA_VISIBLE_DEVICES=x python -W ignore clustering_features.py \
 ```
 
 ## Visualization 
-To visualize our result, one can run the following code in run.sh
+To visualize our coarse result, one can run the following code in run.sh
 
 ```
 python visualization.py \
@@ -59,4 +59,15 @@ python visualization.py \
     -m output/saved_labels.npz \ # Mask File
     -o output/ # Output folder
 ```
-![Visualization](assets/visualization.png)
+![Visualization Coarse](assets/visualization.png)
+
+To visualize our refinement result, one can run the following code in run_refined.sh
+
+```
+python visualization_refined.py \
+    -i /home/planner/xiongbutian/ignores/images \
+    -m /home/planner/xiongbutian/ignores/output/refined_mask.npz \
+    -o /home/planner/xiongbutian/ignores/output/visualization
+```
+The visualized mask will be something like this: 
+![Visualization Refined](assets/refined_mask.png)

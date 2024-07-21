@@ -1,8 +1,10 @@
-from stable_processing.decode_mask import white_overlay, alpha_value_blending
+from stable_processing.decode_mask import black_overlay, alpha_mask_generation
+from stable_processing.logging import print_with_color
 from tqdm import tqdm
 from PIL import Image
 import numpy as np
 import os
+import torch
 
 import argparse
 
@@ -12,21 +14,22 @@ def get_image_height_width(image_location):
     return img.shape[:2]
 
 def get_source_file(npz_location:str, img_dir:str):
-    mask = np.load(npz_location)
+    masks = np.load(npz_location)
     img_list = [os.path.join(img_dir, img) for img in sorted(os.listdir(img_dir)) if img.endswith(('.png', '.jpg', '.jpeg'))]
     
-    return mask, 
+    return masks, img_list
 
-def generate_image_group(masks:np.ndarray, original_image:str, stored_location):
+def generate_image_group(masks:torch.Tensor, original_image:str, stored_location:str):
     original_image = Image.open((original_image)).convert('RGBA')
     count = 0
-    for mask in masks:
-        alpha_mask = alpha_value_blending(original_image.size, mask)
-        overlay_image = white_overlay(alpha_mask, original_image)
-        os.makedirs(stored_location,exist_ok=True)
-        overlay_image.save(f'output/{stored_location}/{count}.png')
+    alpha_mask = alpha_mask_generation(original_image.size, masks)
+    alpha_mask = alpha_mask.cpu().numpy()
+    blended_images = black_overlay(alpha_mask, original_image) # blended images B, H, W
+    os.makedirs(stored_location,exist_ok=True)
+    for image in blended_images:
+        image.save(f'{stored_location}/{count}.png')
         count += 1
-        overlay_image.close()
+        image.close()
     
 
 def parser():
@@ -43,19 +46,29 @@ def main():
     mask_location = args.mask_location
     image_dir = args.image_dir
     output_dir = args.output_dir
-    print(output_dir)
+    print_with_color(f'the output directory is {output_dir}', 'YELLOW')
+    print_with_color(f'the mask_location is {mask_location}', 'YELLOW')
+    print_with_color(f'the image_dir is {image_dir}', 'YELLOW')
     
-    
-    masks, img_list = get_source_file(mask_location, image_dir)
-    
+    if os.path.exists(output_dir):
+        print_with_color(f'The output dir exists, skip creating directory', 'YELLOW')
+    else: 
+        os.makedirs(output_dir)
+        print_with_color(f'The output dir does not exist, creating directory', 'YELLOW')
 
-    print('overlaing image ...')
+    masks, img_list = get_source_file(mask_location, image_dir)
+
+
+    print_with_color('overlaing image ...', 'YELLOW')
     for i, image_location in tqdm(enumerate(img_list), total=len(img_list), desc="Processing items"):
-        
+        key = image_location.split('/')[-1]
+        image_location = key.split('.')[0]
         generate_image_group(
-                            masks[image_location], 
-                            os.path.join(image_dir, image_location), 
+                            torch.Tensor(masks[key]).cuda(), 
+                            os.path.join(image_dir, key), 
                             os.path.join(output_dir,image_location)
                             )
+    print_with_color(f'Visualization is accomplished, the data is stored in {output_dir}', 'GREEN')
+
 if __name__ == '__main__':
     main()
