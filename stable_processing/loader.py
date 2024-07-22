@@ -67,11 +67,13 @@ class TransformImage:
         neww = int(neww + 0.5)
         newh = int(newh + 0.5)
         return (newh, neww)
+    
+
 
 
     
 class ImageDataset(Dataset):
-    def __init__(self, directory, transform=None):
+    def __init__(self, directory, transform: TransformImage =None):
         """
         Args:
             directory (string): Directory with all the images.
@@ -81,6 +83,7 @@ class ImageDataset(Dataset):
         self.directory = directory
         self.transform = transform  # Expecting an instance of TransformImage
         self.images = [os.path.join(directory, img) for img in sorted(os.listdir(directory)) if img.endswith(('.png', '.jpg', '.jpeg'))]
+        self.mask = self.generate_padding_mask()
 
     def __len__(self):
         return len(self.images)
@@ -95,6 +98,22 @@ class ImageDataset(Dataset):
         
         basename = os.path.basename(img_path)
         return image, basename
+    
+    def generate_padding_mask(self) -> torch.Tensor:
+        image = Image.open(self.images[0]).convert('RGB')
+        image = np.array(image)
+        h, w = image.shape[0], image.shape[1]
+        """Generate a mask indicating the padding regions."""
+        padh = self.transform.image_size - h
+        padw = self.transform.image_size - w
+        mask = torch.zeros((h, w))
+        mask = F.pad(mask, (0, padw, 0, padh), value=1)
+        mask = mask.unsqueeze(0).unsqueeze(0).float()
+        # Downscale the mask
+        downscaled_mask = F.interpolate(mask, size=(64, 64), mode='nearest')
+        # Remove the added dimensions and return as binary
+        downscaled_mask = downscaled_mask.squeeze()
+        return downscaled_mask
 
 
 def load_dataset(directory, batch_size, num_workers):
@@ -107,6 +126,6 @@ def load_dataset(directory, batch_size, num_workers):
     # Create data loader
     dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=False, num_workers=num_workers)
     
-    return dataloader, len(dataset)
+    return dataloader, len(dataset), dataset.mask.cuda()
 
     

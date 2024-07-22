@@ -29,10 +29,13 @@ import argparse
 from tqdm import tqdm 
 
 import numpy as np
-import PIL.Image as Image
 import os 
-K = 10
-
+K = 5
+OVERALL_CLUSTER = 15
+'''
+    We need to determine which one of the label is the padding label and strange label
+    Kind important
+'''
 class sam_batchify(SamPredictor):
     def __init__(self, sam_model: Sam) -> None:
         super().__init__(sam_model)
@@ -150,17 +153,18 @@ def main():
     
     device = args.device
     
-    debugging =(args.debugging == 'True')
+    debugging = (args.debugging == 'True')
     batch_number = args.batch_num
     
     if debugging:
         os.makedirs(os.path.join(output_directory, 'debugging'), exist_ok=True)
         debugging_dir = os.path.join(output_directory, 'debugging')
+        print_with_color(f'The debugging mode is on, and the debugging result is stored in:{debugging_dir}', 'RED')
+        print_with_color(f'To turn debugging mode off, simply set \"debugging False\"', 'RED')
 
-    loader, image_number = load_dataset(image_directory, batch_size=batch_number, num_workers=2) 
+    loader, image_number, padding_mask = load_dataset(image_directory, batch_size=batch_number, num_workers=2) 
     model = sam_batchify(sam_model_registry[sam_version](checkpoint=sam_checkpoint).to(device))
     features_saver = torch.zeros(size = (image_number, 256, 64, 64))
-
     batched_labels = torch.zeros(size = (image_number, 64, 64))
     batched_prototype = torch.zeros(size = (len(loader), K, 256))
     
@@ -178,7 +182,7 @@ def main():
                  
             down_sample_features = apply_pca(features)
             
-            labels = cluster_kmeans(features=down_sample_features)
+            labels = cluster_kmeans(features=down_sample_features, n_clusters=K)
             
             labels = torch.as_tensor(labels, device='cuda')
             features = torch.as_tensor(features, device='cuda')
@@ -196,10 +200,11 @@ def main():
     torch.cuda.empty_cache()
 
     print_with_color(f'Image encoding with hierachical clustering is accomplished' , 'GREEN')
+    print_with_color(f'Saving Interal Result ...' , 'YELLOW')
 
     
     batched_prototype = batched_prototype.contiguous().cuda()
-    prototype_clustered_result = inter_group_cluster_kmeans(batched_prototype, n_clusters=30) # (prototype_len)
+    prototype_clustered_result = inter_group_cluster_kmeans(batched_prototype, n_clusters=OVERALL_CLUSTER) # (prototype_len)
     prototype_clustered_result = prototype_clustered_result.reshape((len(loader), -1)) # (the number of batches, k)
     
     batched_labels = batched_labels.contiguous().cuda()            # (n//b, b, h, w)
@@ -212,12 +217,18 @@ def main():
     print_with_color(f'Interal result of clustering labels and features are saved at {output_directory}/saved_labels and {output_directory}/saved_features' , 'GREEN')
 
     del batched_labels, prototype_clustered_result, batched_prototype
-
     # We need to use refined labels as a masks and send it to sam mask encoder
+    
+    
     model = sam_batchify(sam_model_registry[sam_version](checkpoint=sam_checkpoint).to(device))
     
     file_name = sorted(os.listdir(image_directory))
     mask_dict = {}
+    global_mask_index = {}
+
+    # features_saver = torch.tensor(np.load('/home/planner/xiongbutian/ignores/output/saved_features.npz')['arr_0']).cuda()
+    # refined_lable = torch.tensor(np.load('/home/planner/xiongbutian/ignores/output/saved_labels.npz')['arr_0']).cuda()
+
 
     
     # refined our mask using the decoding stratgy
@@ -227,27 +238,34 @@ def main():
             features = features.cuda()
             masks = masks.cuda()
             
-            masks_unique = torch.unique(masks) 
+            masks_unique = torch.unique(masks) # we also need to remember the unique label, we need to use it for consistancy tracking
             refined_merged_masks = []
+            filtered_label = []
             for label in masks_unique:
-                ### would be possible to process it batchify?
-                refined_masks, _ = model.point_fine_gradined_mask_generation(masks == label, features)
+                mask = (masks == label).float()
+                # the rpompt point is actually at the padding region
+                overlay = (mask*padding_mask).sum()
+                if overlay >= 64:
+                    continue
+                filtered_label.append(label)
+                refined_masks, _ = model.point_fine_gradined_mask_generation(mask, features)
                 refined_masks = refined_masks
-                refined_merged_masks.append(refined_masks)
+                refined_merged_masks.append(refined_masks.cpu())
                 if debugging:
+                    # if debugging, we will save logits as the internal result
                     debugging_name = name.split('.')[0]
-                    heatmap(refined_masks, os.path.join(debugging_dir,f'{debugging_name}_logits+.jpg'))
-                    heatmap(masks == label, os.path.join(debugging_dir,f'{debugging_name}+.jpg'))
-
-            mask_dict[name]  = torch.stack(refined_merged_masks).cpu().numpy()
+                    heatmap(refined_masks, os.path.join(debugging_dir,f'{debugging_name}_{label}_logits.jpg'))
+                    heatmap(mask, os.path.join(debugging_dir,f'{debugging_name}_{label}.jpg'))
+            mask_dict[name]  = torch.stack(refined_merged_masks).numpy()
+            global_mask_index[name]  = torch.stack(filtered_label).cpu().numpy()
             # There is no unified shape since some of the unique label might be a lot, some might not be a unique label
         print_with_color('Saving refinement result ...', 'YELLOW')
         np.savez_compressed(f'{output_directory}/refined_mask.npz', **mask_dict)
+        np.savez_compressed(f'{output_directory}/refined_label.npz', **global_mask_index)
     print_with_color(f'Mask refinement is accomplished, refined mask is saved at {output_directory}/refined_mask.npz', 'GREEN')
 
         
     
-
 
 if __name__ == '__main__':
     main()    

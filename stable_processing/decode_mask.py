@@ -170,3 +170,13 @@ def black_overlay(alpha_mask: np.ndarray,   original_image) -> Image.Image:
         blended_image = Image.alpha_composite(original_image, black_overlay)
         blended_images.append(blended_image)
     return blended_images
+
+def hard_mask(alpha_masks: np.ndarray,   original_image: Image.Image) -> Image.Image:
+    # alpha maks is a b, h, w size image
+    masked_images = []
+    original_image = np.asarray(original_image)
+    for alpha_mask in alpha_masks:
+        alpha_mask = np.logical_not(alpha_mask).astype(int)
+        image = original_image * alpha_mask[:, :, None]
+        masked_images.append(Image.fromarray(image.astype(np.uint8)))
+    return masked_images

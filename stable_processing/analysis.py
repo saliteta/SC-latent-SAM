@@ -1,5 +1,6 @@
 from cuml.decomposition import PCA
 from cuml.cluster import KMeans
+import torch.nn.functional as F
 
 import matplotlib.pyplot as plt
 from matplotlib import gridspec
@@ -154,6 +155,7 @@ def heatmap(data:torch.Tensor, img_location):
     plt.title('Heatmap of 256x256 Array')
     plt.savefig(img_location)
     plt.close()
+
 
 
 if __name__ == '__main__':

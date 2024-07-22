@@ -1,4 +1,4 @@
-from stable_processing.decode_mask import black_overlay, alpha_mask_generation
+from stable_processing.decode_mask import black_overlay, alpha_mask_generation, hard_mask
 from stable_processing.logging import print_with_color
 from tqdm import tqdm
 from PIL import Image
@@ -20,11 +20,15 @@ def get_source_file(npz_location:str, img_dir:str):
     return masks, img_list
 
 def generate_image_group(masks:torch.Tensor, original_image:str, stored_location:str):
-    original_image = Image.open((original_image)).convert('RGBA')
+    original_image = Image.open((original_image)).convert('RGB')
     count = 0
     alpha_mask = alpha_mask_generation(original_image.size, masks)
+
+    alpha_mask = alpha_mask.permute(0,2,1)
+
     alpha_mask = alpha_mask.cpu().numpy()
-    blended_images = black_overlay(alpha_mask, original_image) # blended images B, H, W
+    #blended_images = black_overlay(alpha_mask, original_image) # blended images B, H, W
+    blended_images = hard_mask(alpha_mask, original_image)
     os.makedirs(stored_location,exist_ok=True)
     for image in blended_images:
         image.save(f'{stored_location}/{count}.png')
